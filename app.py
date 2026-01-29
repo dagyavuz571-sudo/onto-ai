@@ -7,7 +7,7 @@ from datetime import datetime
 import time
 
 # --- 1. AYARLAR ---
-st.set_page_config(page_title="Onto-AI: Llama 3", layout="wide")
+st.set_page_config(page_title="Onto-AI: Llama 3 (Frenli)", layout="wide")
 st.markdown("""
     <style>
     .stApp { background: #0e1117; color: #ffffff; }
@@ -18,27 +18,26 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. HAFIZA YÖNETİMİ ---
+# --- 2. HAFIZA ---
 if "all_sessions" not in st.session_state: st.session_state.all_sessions = {}
 if "messages" not in st.session_state: st.session_state.messages = []
 if "gallery" not in st.session_state: st.session_state.gallery = []
 
 # --- 3. YAN MENÜ ---
 with st.sidebar:
-    st.title("🦙 Onto-AI (Llama 3)")
+    st.title("🦙 Onto-AI")
+    st.caption("Llama 3 (Safe Mode)")
     
-    # API KEY GİRİŞİ (SECRETS VEYA ELLE)
+    # API KEY
     if "GROQ_API_KEY" in st.secrets:
         api_key = st.secrets["GROQ_API_KEY"]
-        st.success("✅ Groq LPU Aktif")
+        st.success("✅ Groq Bağlı")
     else:
-        api_key = st.text_input("Groq API Key (gsk_...):", type="password")
-        if not api_key:
-            st.caption("[Anahtarı Buradan Alın](https://console.groq.com/keys)")
+        api_key = st.text_input("Groq API Key:", type="password")
 
     st.divider()
 
-    # Sohbet Arşivi
+    # Sohbetler
     st.subheader("🗂️ Sohbetler")
     if st.button("➕ Yeni Sohbet"):
         if st.session_state.messages:
@@ -70,46 +69,44 @@ with st.sidebar:
 
 # --- 4. ANA EKRAN ---
 st.title("Onto-AI")
-st.caption("Powered by Meta Llama 3 & Groq LPU")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg.get("img"): st.image(msg["img"], use_container_width=True)
 
-# --- 5. LLAMA 3 MOTORU ---
-if prompt := st.chat_input("Yazın veya 'çiz' deyin..."):
+# --- 5. FRENLİ MOTOR ---
+if prompt := st.chat_input("Yazın..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"): st.markdown(prompt)
     
     if not api_key:
-        st.error("Lütfen Groq API Key girin!")
+        st.error("Groq Key eksik!")
     else:
-        # Groq İstemcisi
         client = Groq(api_key=api_key)
         
         with st.chat_message("assistant"):
+            # --- FREN MEKANİZMASI BAŞLANGICI ---
+            # Kullanıcıyı biraz bekletiyoruz ki API spamlenmesin.
+            with st.spinner("⏳ Bebek yapay zeka düşünüyor... (Hız Koruması Devrede)"):
+                time.sleep(3) # 3 Saniye zorunlu bekleme
+            # --- FREN MEKANİZMASI BİTİŞİ ---
+
             try:
-                # Termodinamik Sıcaklık (Llama buna çok iyi tepki verir)
                 temp = max(0.01, 1.8 * (1 - w_agency))
                 
-                # Sistem Mesajı (Persona)
                 sys_msg = (
-                    f"Sen Onto-AI'sin. Termodinamik Ajans (w) seviyen: {w_agency:.2f}. "
-                    f"Eğer w 1'e yakınsa: Çok kısa, analitik, duygusuz ve makine gibi konuş. "
-                    f"Eğer w 0'a yakınsa: Çok yaratıcı, felsefi, karmaşık ve duygusal konuş. "
-                    f"GÖRSEL TALİMATI: Eğer kullanıcı 'çiz' veya 'resim' derse, resmi kendin çizemeyeceğini söyleme. "
-                    f"'Görseli w={w_agency:.2f} parametresine göre oluşturuyorum' diyerek betimleme yap. "
-                    f"Sistem görseli otomatik ekleyecek."
+                    f"Sen Onto-AI'sin. w={w_agency:.2f}. "
+                    f"w=1 ise Robotik/Analitik, w=0 ise Şairane/Kaotik konuş. "
+                    f"GÖRSEL: 'Çiz' denirse 'Ben çizemem' deme. 'Oluşturuyorum' de."
                 )
 
-                # Llama 3.3 70B (Şu an en iyisi)
                 chat_completion = client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": sys_msg},
                         {"role": "user", "content": prompt}
                     ],
-                    model="llama-3.3-70b-versatile", 
+                    model="llama-3.3-70b-versatile",
                     temperature=temp,
                     max_tokens=1024,
                 )
@@ -117,24 +114,25 @@ if prompt := st.chat_input("Yazın veya 'çiz' deyin..."):
                 reply = chat_completion.choices[0].message.content
                 st.markdown(reply)
                 
-                # Görsel Üretme (Pollinations - Llama çizemez ama biz çizeriz)
+                # Görsel
                 img_url = None
                 if any(x in prompt.lower() for x in ["çiz", "resim", "görsel", "draw"]):
-                    with st.spinner("🎨 Görsel işleniyor..."):
+                    with st.spinner("🎨 Fırça darbeleri atılıyor..."):
                         try:
-                            # Promptu Llama'dan değil direkt kullanıcıdan alıyoruz
+                            time.sleep(1) # Görsel için de ufak bir nefes payı
                             safe_p = urllib.parse.quote(prompt[:100])
-                            style = "scientific, macro photography" if w_agency > 0.6 else "abstract, surrealism, dali style"
+                            style = "scientific" if w_agency > 0.6 else "surreal"
                             seed = int(time.time())
                             img_url = f"https://pollinations.ai/p/{safe_p}_{style}?width=1024&height=1024&seed={seed}"
-                            
                             st.image(img_url, caption=f"w={w_agency:.2f}")
                             st.session_state.gallery.append({"url": img_url, "prompt": prompt})
                         except:
-                            st.warning("Görsel sunucusuna bağlanılamadı.")
+                            st.warning("Görsel servisi meşgul.")
 
-                # Kayıt
                 st.session_state.messages.append({"role": "assistant", "content": reply, "img": img_url})
                 
             except Exception as e:
-                st.error(f"Hata: {e}")
+                if "429" in str(e):
+                    st.error("🚦 Çok hızlı gittik! Lütfen 10 saniye bekleyin.")
+                else:
+                    st.error(f"Hata: {e}")
