@@ -1,11 +1,11 @@
 import streamlit as st
 import numpy as np
-from openai import OpenAI
+import google.generativeai as genai
 import urllib.parse
-from datetime import datetime
+import time
 
-# --- 1. TASARIM ---
-st.set_page_config(page_title="Onto-AI: DeepSeek", layout="wide")
+# --- 1. AYARLAR ---
+st.set_page_config(page_title="Onto-AI: Auto-Retry", layout="wide")
 st.markdown("""
     <style>
     .stApp { background: #0e1117; color: #ffffff; }
@@ -19,78 +19,87 @@ st.markdown("""
 if "all_sessions" not in st.session_state: st.session_state.all_sessions = {}
 if "current_chat" not in st.session_state: st.session_state.current_chat = []
 
-# --- 3. YAN MENÜ ---
+# --- 3. İNATÇI FONKSİYON (RETRY LOGIC) ---
+def generate_with_retry(model, prompt, max_retries=3):
+    """Hata alırsa bekleyip tekrar deneyen fonksiyon"""
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str:
+                # Kota hatasıysa bekle ve tekrar dene
+                wait_time = (attempt + 1) * 5 # 5sn, 10sn, 15sn bekle
+                with st.spinner(f"🚦 Kota yoğunluğu. {attempt+1}. deneme yapılıyor ({wait_time} sn)..."):
+                    time.sleep(wait_time)
+                continue # Döngüye devam et
+            else:
+                # Başka hataysa direkt fırlat
+                raise e
+    return "Üzgünüm, Google şu an çok yoğun. Lütfen 1 dakika sonra deneyin."
+
+# --- 4. YAN MENÜ ---
 with st.sidebar:
-    st.title("🧬 Onto-AI (DeepSeek)")
+    st.title("🧬 Onto-AI")
     
-    # DeepSeek API Key Girişi
-    if "DEEPSEEK_API_KEY" in st.secrets:
-        api_key = st.secrets["DEEPSEEK_API_KEY"]
-        st.success("✅ DeepSeek Hattı Aktif")
+    # Google API Key
+    if "GOOGLE_API_KEY" in st.secrets:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        st.success("✅ Google Hattı Aktif")
     else:
-        api_key = st.text_input("DeepSeek API Key:", type="password")
-        st.caption("Key'i 'platform.deepseek.com' adresinden alabilirsiniz.")
+        api_key = st.text_input("Google API Key:", type="password")
 
     st.divider()
-    
-    # Termodinamik Ayar
     t_val = st.slider("Gelişim (t)", 0, 100, 50)
     w_agency = 1 - np.exp(-0.05 * t_val)
     st.metric("Ajans (w)", f"%{w_agency*100:.1f}")
-    
-    # Sıcaklık Hesabı (DeepSeek buna bayılır)
-    # w=1 (Düzen) -> Temp=0.0 | w=0 (Kaos) -> Temp=1.3
-    dynamic_temp = max(0.0, 1.5 * (1 - w_agency))
     
     if st.button("🗑️ Temizle"):
         st.session_state.current_chat = []
         st.rerun()
 
-# --- 4. ANA EKRAN ---
-st.title("Onto-AI")
+# --- 5. ANA EKRAN ---
+st.title("Onto-AI: İnatçı Mod")
 
 for msg in st.session_state.current_chat:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg.get("img"): st.image(msg["img"], use_container_width=True)
 
-# --- 5. DEEPSEEK MOTORU ---
+# --- 6. ÇALIŞMA ALANI ---
 if prompt := st.chat_input("Mesaj yazın..."):
     st.session_state.current_chat.append({"role": "user", "content": prompt})
     with st.chat_message("user"): st.markdown(prompt)
     
     if not api_key:
-        st.error("DeepSeek API Key eksik!")
+        st.error("Google API Key eksik!")
     else:
-        # DeepSeek Bağlantısı
-        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        genai.configure(api_key=api_key)
+        
+        # En güvenli model
+        model_name = "gemini-1.5-flash"
+        
+        # Termodinamik Sıcaklık
+        temp = max(0.1, 1.6 * (1 - w_agency))
+        
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            generation_config={"temperature": temp},
+            system_instruction=f"Sen Onto-AI'sin. Ajans (w) seviyen: {w_agency:.2f}. Buna göre konuş."
+        )
         
         with st.chat_message("assistant"):
-            status = st.empty()
-            status.info("🧠 DeepSeek V3 Düşünüyor...")
-            
             try:
-                # Sistem Mesajı (Persona)
-                system_msg = f"Sen Onto-AI'sin. Termodinamik Ajans (w) seviyen: {w_agency:.2f}. Bu değer 1'e yakınsa çok kısa, net ve robotik konuş. 0'a yakınsa şairane, karmaşık ve uzun konuş."
+                # İnatçı fonksiyonu çağırıyoruz
+                reply = generate_with_retry(model, prompt)
+                st.markdown(reply)
                 
-                response = client.chat.completions.create(
-                    model="deepseek-chat", # Veya "deepseek-reasoner"
-                    messages=[
-                        {"role": "system", "content": system_msg},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=dynamic_temp, # Termodinamik müdahale burada
-                    stream=False
-                )
-                
-                reply = response.choices[0].message.content
-                status.markdown(reply)
-                
-                # Görsel (Pollinations devam eder)
+                # Görsel
                 img_url = None
                 if any(x in prompt.lower() for x in ["çiz", "resim", "görsel"]):
                     safe_p = urllib.parse.quote(prompt[:50])
-                    style = "scientific" if w_agency > 0.6 else "dreamlike"
+                    style = "scientific" if w_agency > 0.6 else "artistic"
                     img_url = f"https://pollinations.ai/p/{safe_p}_{style}?width=1024&height=1024&seed={np.random.randint(100)}"
                     st.image(img_url)
                 
