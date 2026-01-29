@@ -24,6 +24,7 @@ st.caption("Termodinamik Doğruluk Motoru")
 # --- 2. YAN MENÜ (AYARLAR) ---
 with st.sidebar:
     st.header("⚙️ Beyin Ayarları")
+    # Kullanıcıdan API Key istemeye devam ediyoruz (Güvenli Yol)
     api_key = st.text_input("Google API Key:", type="password", help="Anahtar olmadan motor çalışmaz.")
     
     st.divider()
@@ -63,7 +64,8 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # --- 6. KULLANICI MESAJ YAZINCA NE OLACAK? ---
-if prompt = st.chat_input("Bir şeyler yazın..."):
+# !!! DÜZELTME BURADA YAPILDI (:= operatörü) !!!
+if prompt := st.chat_input("Bir şeyler yazın..."):
     
     # A) Kullanıcı mesajını ekrana bas ve hafızaya at
     st.chat_message("user").markdown(prompt)
