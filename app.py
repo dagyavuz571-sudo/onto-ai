@@ -4,10 +4,10 @@ import google.generativeai as genai
 import matplotlib.pyplot as plt
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Onto-AI: Gerçek Zeka", layout="centered")
+st.set_page_config(page_title="Onto-AI: Final", layout="centered")
 
 st.title("🧬 Onto-AI: Termodinamik Beyin")
-st.info("Eğer 'Anahtar Yok' diyorsa sol üstteki oka (>) tıklayıp API Key giriniz.")
+st.info("Bu sürüm, mevcut en uygun yapay zeka modelini OTOMATİK bulur.")
 
 # --- YAN MENÜ ---
 st.sidebar.header("⚙️ Beyin Ayarları")
@@ -16,57 +16,71 @@ t_value = st.sidebar.slider("Gelişim Süreci (t)", 0, 100, 10)
 w_agency = 1 - np.exp(-0.05 * t_value)
 st.sidebar.metric("Ajans Seviyesi (w)", f"%{w_agency*100:.1f}")
 
-# --- AKILLI BEYİN FONKSİYONU ---
-def ask_smart_brain(question, w, key):
-    if not key:
-        return "⚠️ Lütfen sol menüden Google API Key giriniz.", 0, "Anahtar Yok"
-    
+# --- OTOMATİK MODEL BULUCU ---
+def find_working_model(key):
+    """Google'ın sunduğu modelleri listeler ve çalışan ilkini seçer."""
     genai.configure(api_key=key)
-    
-    # --- MODEL SEÇME MEKANİZMASI (HATA ÖNLEYİCİ) ---
-    # Önce en yeni modeli dener, olmazsa eskisini dener.
-    target_model = 'gemini-1.5-flash'
     try:
-        model = genai.GenerativeModel(target_model)
-        # Test amaçlı boş bir model çağrısı yapalım ki hata varsa burada patlasın
-        # (Bu kısım modelin yüklendiğini teyit eder)
-    except:
-        target_model = 'gemini-pro' # Yedek model
-        model = genai.GenerativeModel(target_model)
+        available_models = []
+        for m in genai.list_models():
+            # Sadece metin üretebilen modelleri al
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # Listeden işimize yarayan ilkini seç (Genelde gemini-pro veya gemini-1.0-pro)
+        if available_models:
+            return available_models[0] # İlk bulduğunu döndür
+        else:
+            return None
+    except Exception as e:
+        return None
 
-    # --- SİZİN TEORİNİZ (PROMPT) ---
-    system_instruction = f"""
-    Sen 'Onto-AI'sin. Ontogenetik Sentez teorisine göre çalışıyorsun.
-    Gerçeklik Algın (Agency): %{w*100}.
+# --- BEYİN FONKSİYONU ---
+def ask_brain_auto(question, w, key):
+    if not key:
+        return "⚠️ Önce API Key giriniz.", 0, "Anahtar Yok"
     
-    1. Agency DÜŞÜKSE (<%40): Rüya görüyor gibisin. Cevaplar uzun, şairane, belki biraz saçma ve bilim dışı. Enerji israfı yap.
-    2. Agency YÜKSEKSE (>%80): Saf termodinamik makinesisin. Cevaplar KISA, NET, KESİN. Asla gereksiz kelime yok.
-    3. ORTADA: Normal davran.
+    # Otomatik Model Seçimi
+    model_name = find_working_model(key)
     
-    Soru: {question}
-    """
-    
+    if not model_name:
+        return "HATA: API Key hatalı veya Google modellerine erişilemiyor.", 0, "Bağlantı Hatası"
+
     try:
+        model = genai.GenerativeModel(model_name)
+        
+        # SİZİN TEORİNİZ (PROMPT)
+        system_instruction = f"""
+        Sen 'Onto-AI'sin. Ontogenetik Sentez teorisine göre çalışıyorsun.
+        Gerçeklik Algın (Agency): %{w*100}.
+        
+        1. Agency DÜŞÜKSE (<%40): Rüya görüyor gibisin. Cevaplar uzun, şairane, tutarsız.
+        2. Agency YÜKSEKSE (>%80): Saf gerçeklik makinesisin. Cevaplar KISA, NET ve KESİN DOĞRU.
+        3. ORTADA: Normal davran.
+        
+        Soru: {question}
+        """
+        
         response = model.generate_content(system_instruction)
         text = response.text
         cost = min(99, len(text) / 5) if w < 0.8 else 5.0
-        return text, cost, f"✅ Çalışan Model: {target_model}"
+        
+        return text, cost, f"✅ Çalışan Model: {model_name}"
         
     except Exception as e:
-        # Hata olursa hatayı ekrana basacağız ki görelim
-        return f"Hata Detayı: {str(e)}", 0, "❌ Kritik Hata"
+        return f"Model Hatası: {str(e)}", 0, "❌ Hata"
 
 # --- ARAYÜZ ---
-user_question = st.text_input("Sorunuzu sorun:", placeholder="Örn: Evrim nedir?")
+user_question = st.text_input("Sorunuzu sorun:", placeholder="Örn: Gerçek nedir?")
 
 if st.button("Analiz Et"):
     if not user_question:
         st.warning("Soru yazmadınız.")
     else:
-        with st.spinner("Termodinamik hesaplama yapılıyor..."):
-            answer, cost, status = ask_smart_brain(user_question, w_agency, api_key)
+        with st.spinner("Uygun model aranıyor ve çalıştırılıyor..."):
+            answer, cost, status = ask_brain_auto(user_question, w_agency, api_key)
             
-            if "Hata" in status:
+            if "Hata" in status or "⚠️" in answer:
                 st.error(answer)
             else:
                 st.success(f"Durum: {status}")
