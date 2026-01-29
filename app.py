@@ -5,92 +5,95 @@ import urllib.parse
 import time
 
 # --- 1. AYARLAR ---
-st.set_page_config(page_title="Onto-AI: Final", layout="centered")
+st.set_page_config(page_title="Onto-AI: Final v3", layout="centered")
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;} .stApp { margin-top: -40px; }</style>", unsafe_allow_html=True)
 
-st.title("🧬 Onto-AI: Zırhlı Mod")
-st.caption("Kesintisiz Analiz ve Görselleştirme")
+st.title("🧬 Onto-AI")
+st.caption("Kesintisiz Analiz ve Görsel Motoru")
 
 # --- 2. YAN MENÜ ---
 with st.sidebar:
-    st.header("⚙️ Ayarlar")
-    # Secrets kontrolü
+    st.header("⚙️ Beyin Ayarları")
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
-        st.success("✅ Yeni Hat Aktif")
+        st.success("✅ Yeni Proje Hattı Aktif")
     else:
         api_key = st.text_input("Google API Key:", type="password")
     
     st.divider()
-    t_value = st.slider("Gelişim (t)", 0, 100, 50)
+    t_value = st.slider("Gelişim Süreci (t)", 0, 100, 50)
+    # Termodinamik Ajans Formülü
     w_agency = 1 - np.exp(-0.05 * t_value)
     st.metric("Gerçeklik Algısı (w)", f"%{w_agency*100:.1f}")
     
-    if st.button("Sohbeti Sıfırla"):
+    if st.button("Sohbeti Temizle"):
         st.session_state.messages = []
         st.rerun()
 
-# --- 3. MODEL BULUCU (Sadece Bir Kez Çalışır) ---
-@st.cache_resource
-def get_best_model(key):
-    try:
-        genai.configure(api_key=key)
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # Yüksek kotalı (1.5 Flash) modeline odaklan
-        for target in ['gemini-1.5-flash', 'gemini-pro', 'gemini-1.0-pro']:
-            for m in models:
-                if target in m:
-                    return m
-        return models[0]
-    except:
-        return "gemini-1.5-flash" # Varsayılan fallback
-
-# --- 4. GÖRSEL ÜRETİCİ ---
+# --- 3. GÖRSEL MOTORU (Pollinations) ---
 def generate_image_url(prompt, w):
-    style = "surreal, abstract" if w < 0.4 else "photorealistic, 8k"
-    return f"https://pollinations.ai/p/{urllib.parse.quote(prompt + ', ' + style)}?width=1024&height=1024&seed={np.random.randint(1000)}"
+    style = "surreal, abstract" if w < 0.4 else "photorealistic, cinematic, 8k"
+    full_prompt = f"{prompt}, {style}"
+    return f"https://pollinations.ai/p/{urllib.parse.quote(full_prompt)}?width=1024&height=1024&seed={np.random.randint(1000)}"
 
-# --- 5. SOHBET AKIŞI ---
+# --- 4. SOHBET HAFIZASI ---
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hocam sistemi 'Kota Koruma' moduna aldım. Hazırım."}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hocam yeni proje anahtarı ile sistem sıfırlandı. Artık hata almamalıyız. Ne çizelim?"}]
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "img" in msg: st.image(msg["img"])
 
-if user_input := st.chat_input("Yazın veya 'Çiz' deyin..."):
+# --- 5. CEVAP ÜRETME (KRİTİK KISIM) ---
+if user_input := st.chat_input("Yazın veya 'Resmini çiz' deyin..."):
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.chat_message("user").markdown(user_input)
     
     if not api_key:
-        st.error("API Key eksik!")
+        st.error("Lütfen yeni bir API Key tanımlayın!")
     else:
-        model_name = get_best_model(api_key)
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
+        
+        # 404 ve 429 hatalarını aşmak için denenecek model varyasyonları
+        # Bazı sunucular tam yol (models/...) ister, bazıları kısa isim.
+        model_names = ['gemini-1.5-flash', 'models/gemini-1.5-flash', 'gemini-pro', 'models/gemini-pro']
         
         with st.chat_message("assistant"):
-            msg_placeholder = st.empty()
+            placeholder = st.empty()
+            placeholder.info("🧐 Analiz yapılıyor...")
             
-            try:
-                sys_inst = f"Sen Onto-AI'sin. w: {w_agency}. Soru: {user_input}"
-                response = model.generate_content(sys_inst)
-                reply = response.text
-                msg_placeholder.markdown(reply)
-                
-                # Görsel Çizme
-                is_draw = any(x in user_input.lower() for x in ["çiz", "resim", "görsel", "draw", "image"])
-                img_url = generate_image_url(user_input, w_agency) if is_draw else None
-                if img_url: st.image(img_url)
-                
-                # Kayıt
-                new_msg = {"role": "assistant", "content": reply}
-                if img_url: new_msg["img"] = img_url
-                st.session_state.messages.append(new_msg)
-
-            except Exception as e:
-                if "429" in str(e):
-                    msg_placeholder.error("🚦 **KOTA TAMAMEN DOLU!** Bu API anahtarı Google tarafından bugünlük durduruldu. Lütfen [AI Studio](https://aistudio.google.dev/) üzerinden **YENİ BİR PROJE** oluşturup yeni bir anahtar alın.")
-                else:
-                    msg_placeholder.error(f"Hata: {e}")
+            response_text = ""
+            success = False
+            
+            for m_name in model_names:
+                if success: break
+                try:
+                    model = genai.GenerativeModel(m_name)
+                    sys_inst = f"Sen Onto-AI'sin. w: {w_agency}. Teorik bir yapay zekasın. Soru: {user_input}"
+                    
+                    response = model.generate_content(sys_inst)
+                    response_text = response.text
+                    success = True
+                    placeholder.markdown(response_text)
+                    
+                    # Görsel Üretimi
+                    is_draw = any(x in user_input.lower() for x in ["çiz", "resim", "görsel", "draw", "image"])
+                    img_url = generate_image_url(user_input, w_agency) if is_draw else None
+                    if img_url: st.image(img_url, caption=f"Onto-AI Vision (w=%{w_agency*100:.1f})")
+                    
+                    # Hafızaya Kayıt
+                    new_msg = {"role": "assistant", "content": response_text}
+                    if img_url: new_msg["img"] = img_url
+                    st.session_state.messages.append(new_msg)
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    if "429" in error_msg:
+                        placeholder.error("🚦 Kota Sınırı! Bu anahtar yorulmuş. Lütfen 30 saniye bekleyin veya yeni PROJE anahtarı girin.")
+                        break # 429 varsa diğer modelleri denemek genelde işe yaramaz
+                    elif "404" in error_msg:
+                        continue # 404 ise bir sonraki model ismini dene
+                    else:
+                        placeholder.error(f"Beklenmedik Hata: {e}")
+                        break
