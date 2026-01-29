@@ -2,21 +2,21 @@ import streamlit as st
 import numpy as np
 import google.generativeai as genai
 import urllib.parse
-import time # Zamanlama için ekledik
+import time
 
 # --- 1. AYARLAR ---
 st.set_page_config(page_title="Onto-AI Final", layout="centered")
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;} .stApp { margin-top: -40px; }</style>", unsafe_allow_html=True)
 
-st.title("🧬 Onto-AI")
-st.caption("Otomatik Hata Düzeltme ve Görsel Motoru")
+st.title("🧬 Onto-AI: Kesin Çözüm")
+st.caption("Dinamik Model Seçici ve Kota Koruyucu")
 
 # --- 2. YAN MENÜ ---
 with st.sidebar:
     st.header("⚙️ Ayarlar")
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
-        st.success("✅ Yeni Hat Aktif")
+        st.success("✅ Anahtar Aktif")
     else:
         api_key = st.text_input("Google API Key:", type="password")
     
@@ -29,16 +29,35 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- 3. HAFIZA ---
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hocam sistemi 'Otomatik Yeniden Deneme' moduna aldım. Eğer Google tıkarsa 5 saniye bekleyip tekrar deneyeceğim."}]
+# --- 3. MEVCUT MODELİ BULAN AKILLI SİSTEM ---
+def get_working_model_auto(key):
+    genai.configure(api_key=key)
+    try:
+        # Sunucunun desteklediği TÜM modelleri çek
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Öncelik Sırası: En iyiden en stabil olana
+        targets = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro', 'gemini-pro']
+        
+        for t in targets:
+            for m in available_models:
+                if t in m:
+                    return genai.GenerativeModel(m), m
+        
+        # Hiçbiri tutmazsa listedeki ilk modeli ver
+        return genai.GenerativeModel(available_models[0]), available_models[0]
+    except Exception as e:
+        return None, str(e)
 
 # --- 4. GÖRSEL ÜRETİCİ ---
 def generate_image_url(prompt, w):
-    style = "surreal, abstract" if w < 0.4 else "photorealistic, 8k"
+    style = "surreal, abstract" if w < 0.4 else "photorealistic, cinematic"
     return f"https://pollinations.ai/p/{urllib.parse.quote(prompt + ', ' + style)}?width=1024&height=1024&seed={np.random.randint(1000)}"
 
 # --- 5. SOHBET AKIŞI ---
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Hocam her şey hazır. Model ismini sistem otomatik seçiyor. Ne çizelim?"}]
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -51,43 +70,42 @@ if user_input := st.chat_input("Yazın veya 'Çiz' deyin..."):
     if not api_key:
         st.error("API Key eksik!")
     else:
-        genai.configure(api_key=api_key)
-        # KOTASI EN YÜKSEK MODEL: gemini-1.5-flash
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Modeli otomatik tespit et
+        model, model_name = get_working_model_auto(api_key)
         
-        with st.chat_message("assistant"):
-            placeholder = st.empty()
-            placeholder.markdown("🧐 Düşünüyorum...")
-            
-            # --- OTOMATİK RETRY (YENİDEN DENEME) DÖNGÜSÜ ---
-            success = False
-            retries = 0
-            while not success and retries < 3: # En fazla 3 kere dene
-                try:
-                    sys_inst = f"Sen Onto-AI'sin. w: {w_agency}. Soru: {user_input}"
-                    response = model.generate_content(sys_inst)
-                    reply = response.text
-                    placeholder.markdown(reply)
-                    
-                    # Görsel Üretimi
-                    is_draw = any(x in user_input.lower() for x in ["çiz", "resim", "görsel", "draw", "image"])
-                    img_url = generate_image_url(user_input, w_agency) if is_draw else None
-                    if img_url: st.image(img_url)
-                    
-                    # Kayıt
-                    new_msg = {"role": "assistant", "content": reply}
-                    if img_url: new_msg["img"] = img_url
-                    st.session_state.messages.append(new_msg)
-                    success = True
-                    
-                except Exception as e:
-                    if "429" in str(e):
-                        retries += 1
-                        placeholder.warning(f"🚦 Kota dolu. {retries}. deneme yapılıyor (5 sn içinde)...")
-                        time.sleep(5) # 5 saniye bekle ve tekrar dene
-                    else:
-                        placeholder.error(f"Hata: {e}")
-                        break
-            
-            if not success and retries >= 3:
-                placeholder.error("❌ Google şu an çok yoğun veya kotanız tamamen bitti. Lütfen yeni bir API Key ile (yeni proje) deneyin.")
+        if not model:
+            st.error(f"Model listesi alınamadı. Hata: {model_name}")
+        else:
+            with st.chat_message("assistant"):
+                status_placeholder = st.empty()
+                status_placeholder.info(f"🧠 Aktif Model: {model_name} üzerinden analiz yapılıyor...")
+                
+                success = False
+                retries = 0
+                while not success and retries < 2:
+                    try:
+                        sys_inst = f"Sen Onto-AI'sin. w: {w_agency}. Soru: {user_input}"
+                        response = model.generate_content(sys_inst)
+                        reply = response.text
+                        
+                        status_placeholder.markdown(reply)
+                        
+                        # Görsel Çizme
+                        is_draw = any(x in user_input.lower() for x in ["çiz", "resim", "görsel", "draw", "image"])
+                        img_url = generate_image_url(user_input, w_agency) if is_draw else None
+                        if img_url: st.image(img_url)
+                        
+                        # Kayıt
+                        new_msg = {"role": "assistant", "content": reply}
+                        if img_url: new_msg["img"] = img_url
+                        st.session_state.messages.append(new_msg)
+                        success = True
+                        
+                    except Exception as e:
+                        if "429" in str(e):
+                            retries += 1
+                            status_placeholder.warning(f"🚦 Kota yoğunluğu. {retries}. deneme yapılıyor (5 sn)...")
+                            time.sleep(5)
+                        else:
+                            st.error(f"Hata: {e}")
+                            break
