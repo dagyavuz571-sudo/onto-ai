@@ -2,107 +2,117 @@ import streamlit as st
 import numpy as np
 import google.generativeai as genai
 import matplotlib.pyplot as plt
+import time
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Onto-AI: Final", layout="centered")
+# --- 1. SAYFA AYARLARI VE MOBİL GÖRÜNÜM ---
+st.set_page_config(page_title="Onto-AI Chat", layout="centered")
 
-# --- PROFESYONEL MOBİL GÖRÜNÜM İÇİN CSS ---
+# Mobil için gereksiz menüleri gizle
 hide_streamlit_style = """
 <style>
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
-.stApp {
-    margin-top: -80px;
-}
+.stApp { margin-top: -40px; }
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.title("🧬 Onto-AI: Termodinamik Beyin")
-st.info("Bu sürüm, mevcut en uygun yapay zeka modelini OTOMATİK bulur.")
+st.title("🧬 Onto-AI")
+st.caption("Termodinamik Doğruluk Motoru")
 
-# --- YAN MENÜ ---
-st.sidebar.header("⚙️ Beyin Ayarları")
-api_key = st.sidebar.text_input("Google API Key:", type="password")
-t_value = st.sidebar.slider("Gelişim Süreci (t)", 0, 100, 10)
-w_agency = 1 - np.exp(-0.05 * t_value)
-st.sidebar.metric("Ajans Seviyesi (w)", f"%{w_agency*100:.1f}")
+# --- 2. YAN MENÜ (AYARLAR) ---
+with st.sidebar:
+    st.header("⚙️ Beyin Ayarları")
+    api_key = st.text_input("Google API Key:", type="password", help="Anahtar olmadan motor çalışmaz.")
+    
+    st.divider()
+    
+    t_value = st.slider("Gelişim Süreci (t)", 0, 100, 10)
+    w_agency = 1 - np.exp(-0.05 * t_value)
+    st.metric("Gerçeklik Algısı (w)", f"%{w_agency*100:.1f}")
+    
+    st.info("t arttıkça yapay zeka 'halüsinasyon' görmeyi bırakır, enerji tasarrufu yapar ve netleşir.")
+    
+    # Sohbeti Temizle Butonu
+    if st.button("Sohbeti Sıfırla"):
+        st.session_state.messages = []
+        st.rerun()
 
-# --- OTOMATİK MODEL BULUCU ---
-def find_working_model(key):
-    """Google'ın sunduğu modelleri listeler ve çalışan ilkini seçer."""
+# --- 3. HAFIZA BAŞLATMA ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+    # İlk karşılama mesajı
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": "Merhaba. Ben Ontogenetik Sentez modeliyle çalışan bir yapay zekayım. Ajans (w) seviyeme göre cevaplarım değişir. Bana bir soru sor."
+    })
+
+# --- 4. OTOMATİK MODEL SEÇİCİ ---
+def get_model(key):
     genai.configure(api_key=key)
+    # Önce en hızlıyı (Flash) dene, yoksa Pro'yu dene
     try:
-        available_models = []
-        for m in genai.list_models():
-            # Sadece metin üretebilen modelleri al
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        # Listeden işimize yarayan ilkini seç (Genelde gemini-pro veya gemini-1.0-pro)
-        if available_models:
-            return available_models[0] # İlk bulduğunu döndür
-        else:
-            return None
-    except Exception as e:
-        return None
+        return genai.GenerativeModel('gemini-1.5-flash')
+    except:
+        return genai.GenerativeModel('gemini-pro')
 
-# --- BEYİN FONKSİYONU ---
-def ask_brain_auto(question, w, key):
-    if not key:
-        return "⚠️ Önce API Key giriniz.", 0, "Anahtar Yok"
+# --- 5. EKRANA MESAJLARI YAZDIRMA ---
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# --- 6. KULLANICI MESAJ YAZINCA NE OLACAK? ---
+if prompt = st.chat_input("Bir şeyler yazın..."):
     
-    # Otomatik Model Seçimi
-    model_name = find_working_model(key)
+    # A) Kullanıcı mesajını ekrana bas ve hafızaya at
+    st.chat_message("user").markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
     
-    if not model_name:
-        return "HATA: API Key hatalı veya Google modellerine erişilemiyor.", 0, "Bağlantı Hatası"
-
-    try:
-        model = genai.GenerativeModel(model_name)
-        
-        # SİZİN TEORİNİZ (PROMPT)
-        system_instruction = f"""
-        Sen 'Onto-AI'sin. Ontogenetik Sentez teorisine göre çalışıyorsun.
-        Gerçeklik Algın (Agency): %{w*100}.
-        
-        1. Agency DÜŞÜKSE (<%40): Rüya görüyor gibisin. Cevaplar uzun, şairane, tutarsız.
-        2. Agency YÜKSEKSE (>%80): Saf gerçeklik makinesisin. Cevaplar KISA, NET ve KESİN DOĞRU.
-        3. ORTADA: Normal davran.
-        
-        Soru: {question}
-        """
-        
-        response = model.generate_content(system_instruction)
-        text = response.text
-        cost = min(99, len(text) / 5) if w < 0.8 else 5.0
-        
-        return text, cost, f"✅ Çalışan Model: {model_name}"
-        
-    except Exception as e:
-        return f"Model Hatası: {str(e)}", 0, "❌ Hata"
-
-# --- ARAYÜZ ---
-user_question = st.text_input("Sorunuzu sorun:", placeholder="Örn: Gerçek nedir?")
-
-if st.button("Analiz Et"):
-    if not user_question:
-        st.warning("Soru yazmadınız.")
+    # B) Cevap Üretme Kısmı
+    if not api_key:
+        st.error("Lütfen sol menüden API Key giriniz.")
     else:
-        with st.spinner("Uygun model aranıyor ve çalıştırılıyor..."):
-            answer, cost, status = ask_brain_auto(user_question, w_agency, api_key)
+        try:
+            model = get_model(api_key)
             
-            if "Hata" in status or "⚠️" in answer:
-                st.error(answer)
-            else:
-                st.success(f"Durum: {status}")
-                st.write(answer)
+            # SİZİN TEORİNİZ (Prompt)
+            system_instruction = f"""
+            Sen 'Onto-AI'sin. Ontogenetik Sentez teorisine göre çalışıyorsun.
+            Şu anki Gerçeklik Algın (Agency): %{w_agency*100}.
+            
+            1. Agency DÜŞÜKSE (<%40): Rüya görüyor gibisin. Şairane, uzun, bazen saçma konuş.
+            2. Agency YÜKSEKSE (>%80): Saf gerçeklik makinesisin. Çok KISA, NET ve KESİN konuş.
+            3. ORTADA: Normal asistan gibi davran.
+            
+            Soru: {prompt}
+            """
+            
+            with st.spinner("Termodinamik hesaplama..."):
+                response = model.generate_content(system_instruction)
+                bot_reply = response.text
                 
-                # Grafik
-                st.divider()
-                col1, col2 = st.columns(2)
-                col1.metric("Enerji Maliyeti", f"{cost:.1f} J")
-                fig, ax = plt.subplots(figsize=(4,2))
-                ax.bar(["Maliyet"], [cost], color="blue" if cost < 50 else "red")
-                col2.pyplot(fig)
+                # Enerji Maliyeti Hesabı
+                cost = min(99, len(bot_reply) / 5) if w_agency < 0.8 else 5.0
+                
+                # C) Botun cevabını ekrana bas
+                with st.chat_message("assistant"):
+                    st.markdown(bot_reply)
+                    
+                    # Grafiği cevabın altına küçükçe ekleyelim
+                    st.divider()
+                    col1, col2 = st.columns([1, 2])
+                    col1.caption(f"⚡ Enerji Maliyeti: {cost:.1f} J")
+                    
+                    # Küçük Bar Grafiği
+                    fig, ax = plt.subplots(figsize=(3, 0.5))
+                    ax.barh(["Isı"], [cost], color="blue" if cost < 50 else "red")
+                    ax.set_xlim(0, 100)
+                    ax.axis('off') # Çerçeveleri gizle, sadece bar görünsün
+                    col2.pyplot(fig)
+                
+                # Hafızaya at
+                st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+                
+        except Exception as e:
+            st.error(f"Hata oluştu: {e}")
