@@ -22,15 +22,19 @@ st.caption("Termodinamik Doğruluk Motoru")
 # --- 2. YAN MENÜ ---
 with st.sidebar:
     st.header("⚙️ Beyin Ayarları")
-    api_key = st.text_input("Google API Key:", type="password")
+    
+    # --- OTOMATİK ANAHTAR KONTROLÜ (Secrets) ---
+    if "GOOGLE_API_KEY" in st.secrets:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        st.success("✅ Anahtar Tanımlı")
+    else:
+        api_key = st.text_input("Google API Key:", type="password")
     
     st.divider()
     
-    # Sürgü
     t_value = st.slider("Gelişim Süreci (t)", 0, 100, 10)
     w_agency = 1 - np.exp(-0.05 * t_value)
     
-    # Ekrana yazdıralım
     st.metric("Gerçeklik Algısı (w)", f"%{w_agency*100:.1f}")
     
     if st.button("Sohbeti Temizle"):
@@ -42,18 +46,25 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.messages.append({
         "role": "assistant",
-        "content": "Merhaba. Ben Onto-AI. Ajans seviyeme göre cevap veririm. Sorunu sor."
+        "content": "Merhaba. Ben Onto-AI. Model isminden bağımsız çalışıyorum. Sorunu sor."
     })
 
-# --- 4. MODEL SEÇİCİ ---
-def get_model(key):
+# --- 4. MODEL AVCISI (BU KISIM HATAYI ÇÖZER) ---
+def get_any_working_model(key):
     genai.configure(api_key=key)
     try:
-        # Önce en hızlıyı dene
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except:
-        # Olmazsa eskisini dene
+        # 1. YÖNTEM: Google'a "Listende ne var?" diye soruyoruz.
+        # Bu yöntem asla 404 vermez çünkü var olanı seçer.
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'gemini' in m.name:
+                    return genai.GenerativeModel(m.name)
+        
+        # 2. YÖNTEM: Liste boşsa en garantiyi dene
         return genai.GenerativeModel('gemini-pro')
+        
+    except Exception as e:
+        return None
 
 # --- 5. MESAJLARI GÖSTER ---
 for message in st.session_state.messages:
@@ -63,53 +74,45 @@ for message in st.session_state.messages:
 # --- 6. CEVAP MOTORU ---
 if prompt := st.chat_input("Bir şeyler yazın..."):
     
-    # Kullanıcı mesajını ekle
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").markdown(prompt)
     
     if not api_key:
-        st.error("Lütfen API Key giriniz.")
+        st.error("HATA: Anahtar bulunamadı. Secrets ayarını kontrol edin.")
     else:
         try:
-            model = get_model(api_key)
+            # Model Avcısını Çağır
+            model = get_any_working_model(api_key)
             
-            # GÜVENLİK FİLTRELERİNİ KAPATIYORUZ (Cevabı engellemesin diye)
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            ]
-            
-            system_instruction = f"""
-            Sen 'Onto-AI'sin. 
-            Şu anki Gerçeklik Algın (Agency): %{w_agency*100}.
-            
-            GÖREVİN:
-            1. Eğer Agency <%40 ise: Rüya gören, biraz dengesiz, şairane ve uzun cevap ver.
-            2. Eğer Agency >%80 ise: ROBOT GİBİ OL. Cevap sadece 1-2 cümle olsun. Kesin bilgi ver. "Merhaba" deme.
-            3. Ortada ise: Normal davran.
-            
-            Soru: {prompt}
-            """
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Düşünüyor..."):
-                    response = model.generate_content(system_instruction, safety_settings=safety_settings)
-                    
-                    if response.text:
-                        bot_reply = response.text
-                    else:
-                        bot_reply = "Filtreye takıldı veya cevap üretilemedi. Lütfen tekrar dene."
+            if not model:
+                 st.error("Kritik Hata: Google sunucusuna erişilemiyor.")
+            else:
+                # FİLTRELER KAPALI
+                safety_settings = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                ]
+                
+                system_instruction = f"""
+                Sen 'Onto-AI'sin. Gerçeklik Algın (w): %{w_agency*100}.
+                1. w DÜŞÜKSE: Rüya gören, mistik, uzun cevap ver.
+                2. w YÜKSEKSE: ROBOT GİBİ OL. Kısa, net, kesin.
+                Soru: {prompt}
+                """
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Hesaplanıyor..."):
+                        response = model.generate_content(system_instruction, safety_settings=safety_settings)
+                        bot_reply = response.text if response.text else "Cevap üretilemedi."
 
-                    # Enerji Hesabı
-                    cost = min(99, len(bot_reply) / 5) if w_agency < 0.8 else 5.0
-                    
-                    # Sadece Yazı ve Küçük Bir Not
-                    st.markdown(bot_reply)
-                    st.caption(f"⚡ Termodinamik Maliyet: {cost:.1f} J")
-            
-            st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+                        cost = min(99, len(bot_reply) / 5) if w_agency < 0.8 else 5.0
+                        
+                        st.markdown(bot_reply)
+                        st.caption(f"⚡ Maliyet: {cost:.1f} J")
+                
+                st.session_state.messages.append({"role": "assistant", "content": bot_reply})
             
         except Exception as e:
-            st.error(f"Hata: {e}")
+            st.error(f"Hata Detayı: {e}")
