@@ -6,6 +6,19 @@ import matplotlib.pyplot as plt
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Onto-AI: Final", layout="centered")
 
+# --- PROFESYONEL MOBİL GÖRÜNÜM İÇİN CSS ---
+hide_streamlit_style = """
+<style>
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+.stApp {
+    margin-top: -80px;
+}
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 st.title("🧬 Onto-AI: Termodinamik Beyin")
 st.info("Bu sürüm, mevcut en uygun yapay zeka modelini OTOMATİK bulur.")
 
