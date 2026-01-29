@@ -1,3 +1,6 @@
 streamlit
 groq
 numpy
+gTTS
+python-docx
+beautifulsoup4
