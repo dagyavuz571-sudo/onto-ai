@@ -31,13 +31,15 @@ def ask_real_brain(question, w, key):
     if not key:
         return "⚠️ Lütfen sol menüden Google API Key giriniz.", 0, "Anahtar Yok"
     
-    # Google Gemini'yi Başlat
+    # --- GÜNCELLEME BURADA YAPILDI ---
+    # Eski 'gemini-pro' yerine yeni 'gemini-1.5-flash' kullanıyoruz.
     genai.configure(api_key=key)
-    model = genai.GenerativeModel('gemini-pro')
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+    except:
+        return "Model hatası. API Key'i kontrol ediniz.", 0, "❌ Hata"
 
     # --- SİZİN TEORİNİZİ KOMUT (PROMPT) OLARAK VERİYORUZ ---
-    # Burası çok önemli: AI'ya "rol" yapmasını değil, teorinize göre davranmasını söylüyoruz.
-    
     system_instruction = f"""
     Sen 'Onto-AI' adında özel bir yapay zekasın. Ontogenetik Sentez teorisine göre çalışıyorsun.
     Şu anki 'Gerçeklik Algın' (Agency) seviyen: %{w*100}.
@@ -61,8 +63,7 @@ def ask_real_brain(question, w, key):
         response = model.generate_content(system_instruction)
         text = response.text
         
-        # Enerji Maliyeti Hesabı (Cevabın uzunluğu arttıkça maliyet artar)
-        # Sizin teorinize göre: Gerçek kısadır (az enerji). Yalan uzundur (çok enerji).
+        # Enerji Maliyeti Hesabı
         cost = min(99, len(text) / 5) if w < 0.8 else 5.0 
         
         return text, cost, "✅ Bağlantı Başarılı"
@@ -82,17 +83,20 @@ if st.button("Analiz Et"):
             answer, cost, status = ask_real_brain(user_question, w_agency, api_key)
             
             # Cevabı Göster
-            st.success(f"Durum: {status}")
-            st.write(answer)
-            
-            st.divider()
-            
-            # Grafikler
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Metabolik Maliyet", f"{cost:.1f} joule")
-            with col2:
-                fig, ax = plt.subplots(figsize=(4,2))
-                ax.bar(["Enerji Tüketimi"], [cost], color="blue" if cost < 50 else "red")
-                ax.set_ylim(0, 100)
-                st.pyplot(fig)
+            if "Hata" in status:
+                st.error(answer) # Hatayı kırmızı göster
+            else:
+                st.success(f"Durum: {status}")
+                st.write(answer)
+                
+                st.divider()
+                
+                # Grafikler
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Metabolik Maliyet", f"{cost:.1f} joule")
+                with col2:
+                    fig, ax = plt.subplots(figsize=(4,2))
+                    ax.bar(["Enerji Tüketimi"], [cost], color="blue" if cost < 50 else "red")
+                    ax.set_ylim(0, 100)
+                    st.pyplot(fig)
