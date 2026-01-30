@@ -7,99 +7,127 @@ import time
 import uuid
 import urllib.parse
 
-# --- 1. SAYFA AYARLARI ---
+# --- 1. SAYFA YAPILANDIRMASI ---
 st.set_page_config(
     page_title="OntoAI",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS: KIRMIZIYI YOK ET, LOGOYU ÇAK, PANELİ DÜZELT ---
+# --- 2. GÖRSEL AMELİYAT (CSS) ---
 st.markdown("""
     <style>
-    /* FONT */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+    /* IMPORT FONT: INTER */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap');
     * { font-family: 'Inter', sans-serif !important; }
 
-    /* RENKLER VE ARKA PLAN (SİYAH/GRİ) */
-    .stApp { background-color: #050505; color: #E0E0E0; }
+    /* GENEL RENKLER (SİYAH/GRİ) */
+    .stApp { background-color: #000000; color: #E0E0E0; }
     [data-testid="stSidebar"] { background-color: #0a0a0a; border-right: 1px solid #222; }
-
-    /* HEADER GİZLEME (Streamlit'in kendi barı) */
-    header { visibility: hidden; }
-
-    /* --- ÖZEL SABİT LOGO (SOL ÜST) --- */
-    .fixed-logo {
-        position: fixed; top: 15px; left: 60px; z-index: 99999;
-        font-size: 20px; font-weight: 800; color: #fff;
-        letter-spacing: -1px; text-shadow: 0 0 10px rgba(0,0,0,0.8);
-        pointer-events: none;
-    }
     
-    /* MENÜ DARALINCA LOGO KAYMASI İÇİN AYAR */
-    [data-testid="stSidebar"][aria-expanded="false"] ~ .main .fixed-logo {
-        left: 20px; /* Menü kapanınca sola yanaş */
-    }
-
-    /* --- KIRMIZI RENGİ SİLME OPERASYONU --- */
-    /* Input odaklanınca çıkan kırmızı çizgiyi gri yap */
+    /* HEADER'I GİZLE */
+    header { display: none !important; }
+    
+    /* --- KIRMIZI/TURUNCU YOK ETME TİMİ --- */
+    /* Odaklanma renklerini (Focus Ring) gri yap */
     .stTextInput input:focus, .stTextArea textarea:focus, .stChatInput:focus-within {
-        border-color: #555 !important;
-        box-shadow: 0 0 5px rgba(255,255,255,0.1) !important;
+        border-color: #666 !important;
+        box-shadow: 0 0 0 1px #666 !important;
     }
-    /* Normal kenarlıklar */
-    .stTextInput input, .stChatInput {
-        border: 1px solid #333 !important;
-        background-color: #111 !important;
+    /* Butonların kırmızılığını al */
+    button:active, button:focus {
+        border-color: #666 !important;
+        background-color: #222 !important;
         color: white !important;
     }
+    /* Link renkleri */
+    a { color: #aaa !important; }
 
-    /* KONTROL PANELİ (Girişin Üstü) */
-    .control-panel {
-        background-color: #0e0e0e;
-        border-top: 1px solid #222;
-        padding: 10px;
+    /* --- SABİT LOGO (SOL ÜST) --- */
+    .fixed-logo {
         position: fixed;
-        bottom: 80px; /* Giriş çubuğunun üstü */
-        left: 0; right: 0;
-        z-index: 999;
-        display: flex;
-        justify-content: center;
-        gap: 20px;
+        top: 20px;
+        left: 80px; /* Menü kapalıyken de görünsün diye */
+        font-size: 22px;
+        font-weight: 800;
+        color: #fff;
+        z-index: 99999;
+        pointer-events: none;
+        letter-spacing: -1px;
     }
     
-    /* AVATARLAR (Kare ve Minimal) */
-    .stChatMessage .stChatMessageAvatar {
-        background-color: #222 !important;
-        border-radius: 4px !important;
-        color: white !important;
+    /* MENÜ KAPALIYKEN LOGOYU SOLA ÇEK (CSS Hilesi) */
+    [data-testid="stSidebar"][aria-expanded="false"] ~ .main .fixed-logo {
+        left: 20px;
     }
+
+    /* --- GİRİŞ ALANI VE TOOLBAR --- */
+    /* Giriş kutusunu alta sabitle ve stil ver */
+    .stChatInput {
+        padding-bottom: 20px;
+    }
+    div[data-testid="stChatInput"] {
+        background-color: #000 !important;
+        border: 1px solid #333 !important;
+        color: white !important;
+        border-radius: 10px;
+    }
+
+    /* --- TOOLBAR (Girişin Üstündeki Alan) --- */
+    .toolbar-container {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 5px 10px;
+        background: #000;
+        border-top: 1px solid #222;
+        position: fixed;
+        bottom: 70px; /* Chat inputun hemen üstü */
+        left: 20px; /* Sidebar kapalıyken */
+        right: 20px;
+        z-index: 1000;
+        width: auto;
+        border-radius: 8px 8px 0 0;
+    }
+    /* Sidebar açıkken toolbarı sağa it */
+    [data-testid="stSidebar"][aria-expanded="true"] ~ .main .toolbar-container {
+        left: 350px; /* Sidebar genişliği kadar */
+    }
+
+    /* --- AVATARLAR VE MESAJLAR --- */
+    .stChatMessage { background: transparent; }
+    [data-testid="chatAvatarIcon-user"] { background-color: #333 !important; color: white !important; }
     [data-testid="chatAvatarIcon-assistant"] { background-color: #000 !important; border: 1px solid #444; }
 
-    /* BUTONLAR */
+    /* --- MENÜ DÜZENLEMELERİ --- */
     .stButton button {
-        background: #111; color: #aaa; border: 1px solid #333;
-        border-radius: 6px; transition: 0.3s;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        color: #888;
+        padding: 8px;
     }
     .stButton button:hover {
-        border-color: #fff; color: #fff; background: #222;
+        background: #151515;
+        color: #fff;
+        border-radius: 5px;
     }
-
-    /* MOD SEÇİCİ (Radio Button Yatay) */
-    div[role="radiogroup"] { display: flex; gap: 15px; justify-content: center; }
-    div[role="radiogroup"] label { 
-        background: #111; padding: 5px 15px; border-radius: 15px; border: 1px solid #333; cursor: pointer;
+    /* Yeni Sohbet Butonu (Özel) */
+    div[data-testid="stSidebar"] .stButton:first-of-type button {
+        border: 1px solid #333;
+        text-align: center;
+        margin-bottom: 20px;
+        color: #fff;
     }
-    div[role="radiogroup"] label:hover { border-color: #666; }
-    
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. SABİT LOGO (HTML) ---
+# --- 3. SABİT LOGO ---
 st.markdown('<div class="fixed-logo">OntoAI</div>', unsafe_allow_html=True)
 
-# --- 4. VERİTABANI VE STATE ---
-DB_FILE = "ontoai_master.json"
+# --- 4. VERİTABANI ---
+DB_FILE = "ontoai_final.json"
 
 def load_db():
     if os.path.exists(DB_FILE):
@@ -116,72 +144,62 @@ if "db" not in st.session_state:
 
 # --- 5. YAN MENÜ (SOL) ---
 with st.sidebar:
-    # Boşluk bırak (Logo üstte çakılı olduğu için)
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    
+    st.write("") # Logo payı
+    st.write("") 
+    st.write("") 
+
     # YENİ SOHBET
-    if st.button("＋ Yeni Sohbet", use_container_width=True, type="primary"):
+    if st.button("＋ YENİ SOHBET"):
         new_id = str(uuid.uuid4())
-        st.session_state.db["sessions"][new_id] = {"title": "Yeni Sohbet", "messages": [], "ts": time.time()}
+        st.session_state.db["sessions"][new_id] = {"title": "Yeni Oturum", "messages": [], "ts": time.time()}
         st.session_state.db["current_id"] = new_id
         save_db(st.session_state.db)
         st.rerun()
-        
-    st.markdown("---")
     
-    # GEÇMİŞ (Scrollable)
-    st.caption("BELLEK")
-    with st.container(height=350, border=False):
-        sessions = sorted(st.session_state.db["sessions"].items(), key=lambda x: x[1].get("ts", 0), reverse=True)
-        for s_id, s_data in sessions:
-            title = s_data.get("title", "Adsız")
-            # Aktif olan kalın
-            label = f"BOLD_MARKER {title[:18]}" if s_id == st.session_state.db["current_id"] else title[:18]
-            label = label.replace("BOLD_MARKER ", "➤ ")
-            if st.button(label, key=s_id, use_container_width=True):
-                st.session_state.db["current_id"] = s_id
-                save_db(st.session_state.db)
-                st.rerun()
-
-    st.markdown("---")
+    st.caption("GEÇMİŞ")
     
-    # ONTOGENETİK PARAMETRE (TEZİN KALBİ)
-    with st.expander("AYARLAR / w-PARAMETRESİ", expanded=True):
-        st.caption("Ontogenetik Ajans (w)")
-        t_val = st.slider("w", 0, 100, 50, label_visibility="collapsed")
-        w_agency = 1 - np.exp(-0.05 * t_val)
+    # Sohbet Listesi
+    sessions = sorted(st.session_state.db["sessions"].items(), key=lambda x: x[1].get("ts", 0), reverse=True)
+    for s_id, s_data in sessions:
+        title = s_data.get("title", "Adsız")
+        active = "Target" if s_id == st.session_state.db["current_id"] else ""
+        label = f"▪ {title[:18]}" if active else title[:18]
         
-        # Durum Göstergesi
-        if w_agency < 0.2: 
-            st.error(f"w: {w_agency:.2f} (Pasif/Deterministik)")
-        elif w_agency > 0.8:
-            st.success(f"w: {w_agency:.2f} (Kaotik/Özgün)")
-        else:
-            st.info(f"w: {w_agency:.2f} (Dengeli)")
-
-        # API Key
-        if "GROQ_API_KEY" in st.secrets:
-            api_key = st.secrets["GROQ_API_KEY"]
-        else:
-            api_key = st.text_input("Groq Key", type="password")
-            
-        if st.button("Belleği Temizle"):
-            st.session_state.db["sessions"] = {}
-            st.session_state.db["current_id"] = None
+        if st.button(label, key=s_id):
+            st.session_state.db["current_id"] = s_id
             save_db(st.session_state.db)
             st.rerun()
 
-# --- 6. SOHBET ALANI ---
+    st.divider()
+    
+    # ONTOGENETİK AYARLAR (Menünün Altı)
+    with st.expander("SİSTEM AYARLARI", expanded=True):
+        st.caption("Ontogenetik Durum (w)")
+        t_val = st.slider("w-değeri", 0, 100, 50, label_visibility="collapsed")
+        w_agency = 1 - np.exp(-0.05 * t_val)
+        
+        # Görsel Geri Bildirim
+        if w_agency < 0.3: st.caption(f"w: {w_agency:.2f} (Robotik)")
+        elif w_agency > 0.7: st.caption(f"w: {w_agency:.2f} (Özgün/Kaotik)")
+        else: st.caption(f"w: {w_agency:.2f} (Dengeli)")
+
+        # API KEY
+        if "GROQ_API_KEY" in st.secrets:
+            api_key = st.secrets["GROQ_API_KEY"]
+        else:
+            api_key = st.text_input("API Key", type="password")
+
+# --- 6. SOHBET EKRANI ---
 if not st.session_state.db["current_id"]:
     new_id = str(uuid.uuid4())
-    st.session_state.db["sessions"][new_id] = {"title": "Yeni Sohbet", "messages": [], "ts": time.time()}
+    st.session_state.db["sessions"][new_id] = {"title": "Yeni Oturum", "messages": [], "ts": time.time()}
     st.session_state.db["current_id"] = new_id
 
 current_id = st.session_state.db["current_id"]
 chat_data = st.session_state.db["sessions"][current_id]
 
-# Başlık (Sohbetin İçinde Değil, Üstte)
-st.markdown(f"<h3 style='text-align: center; color: #333;'>{chat_data.get('title', '')}</h3>", unsafe_allow_html=True)
+# Başlık (Sayfanın ortasında dursun)
+st.markdown(f"<div style='text-align:center; color:#444; margin-bottom: 20px; font-size: 14px;'>{chat_data.get('title','')}</div>", unsafe_allow_html=True)
 
 # Mesajları Bas
 for msg in chat_data["messages"]:
@@ -190,123 +208,115 @@ for msg in chat_data["messages"]:
         if msg.get("files"): st.caption(f"📎 {msg['files']}")
         if msg.get("img"): st.image(msg["img"])
 
-# --- 7. KONTROL PANELİ VE GİRİŞ (SABİT ALT) ---
+# --- 7. ARAÇ ÇUBUĞU VE GİRİŞ (ALTTA BİRLEŞİK) ---
 
-# Giriş alanının üstüne yapışık duran kontrol paneli
+# Streamlit'te giriş kutusunun üstüne bir şey koymak için 'container' kullanıyoruz.
+# Ancak görsel olarak birleşik durması için yukarıdaki CSS 'toolbar-container' class'ını kullanacak.
+
 with st.container():
-    # Burada kolonlar ile modu ve dosya yüklemeyi hizalıyoruz
-    # Not: Streamlit'te 'chat_input' üzerine widget koymak için container kullanıyoruz
+    # MOD VE DOSYA SEÇİMİ (Chat Input'un üstüne denk gelecek)
+    col1, col2, col3 = st.columns([2, 1, 4])
     
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        # HIZLI / TEMKİNLİ / PROFESYONEL
-        mode = st.radio(
-            "Mod Seç", 
-            ["Hızlı", "Temkinli", "Profesyonel"], 
-            horizontal=True, 
-            label_visibility="collapsed"
-        )
-    with c2:
-        # DOSYA YÜKLEME (Popover ile temiz görünüm)
-        with st.popover("📎 Dosya Ekle", use_container_width=True):
-            uploaded_file = st.file_uploader("Belge", type=["txt", "pdf", "py", "md"])
+    with col1:
+        # Mod Seçimi (Radio ama yatay)
+        mode = st.selectbox("Mod", ["Hızlı", "Temkinli", "Profesyonel"], label_visibility="collapsed")
+    
+    with col2:
+        # Dosya Yükleme (Popover içinde gizli)
+        with st.popover("📎 Ekle"):
+            uploaded_file = st.file_uploader("Dosya", label_visibility="collapsed")
 
-# GİRİŞ ÇUBUĞU
-if prompt := st.chat_input("Düşünceni aktar..."):
+# GİRİŞ KUTUSU
+if prompt := st.chat_input("Düşünceni yaz..."):
     
-    # 1. Dosya İçeriği Okuma
-    file_context = ""
+    # Dosya İşleme
+    file_info = ""
     file_name = None
     if uploaded_file:
         try:
-            raw_text = uploaded_file.getvalue().decode("utf-8")
-            file_context = f"\n\n[DOSYA İÇERİĞİ ({uploaded_file.name})]:\n{raw_text[:5000]}" # İlk 5000 karakter
+            content = uploaded_file.getvalue().decode("utf-8")
+            file_info = f"\n\n[DOSYA: {uploaded_file.name}]\n{content[:4000]}"
             file_name = uploaded_file.name
         except:
-            file_context = "\n[Dosya okunamadı, format desteklenmiyor]"
-    
-    # 2. Kullanıcıyı Kaydet
+            file_info = "\n[Dosya okunamadı]"
+
+    # Kullanıcıyı Kaydet
     chat_data["messages"].append({"role": "user", "content": prompt, "files": file_name})
     
-    # Başlık Yoksa Oluştur
+    # Başlık Atama
     if len(chat_data["messages"]) <= 1:
-        st.session_state.db["sessions"][current_id]["title"] = prompt[:30]
+        st.session_state.db["sessions"][current_id]["title"] = prompt[:25]
     
     # Ekrana Bas
     with st.chat_message("user"): 
         st.markdown(prompt)
         if file_name: st.markdown(f"📎 *{file_name}*")
 
-    # 3. AI MOTORU (Denklemlerin Konuştuğu Yer)
+    # YANIT ÜRETİMİ
     if not api_key:
-        st.error("API Key Eksik.")
+        st.error("API Key Yok.")
     else:
         client = Groq(api_key=api_key)
         
         with st.chat_message("assistant"):
             status = st.empty()
-            status.markdown("`⚡ OntoAI İşliyor...`")
+            status.markdown("`...`")
             
             try:
-                # --- A. MOD AYARLARI ---
+                # --- ONTOGENETİK DENKLEM UYGULAMASI ---
+                
+                # 1. MOD AYARI (Base Temperature ve Sistem)
                 if mode == "Hızlı":
-                    sys_base = "Çok kısa, net ve hızlı cevap ver. Detaylara girme."
-                    temp_mod = 0.2 # Düşük varyasyon
-                    model = "llama-3.1-8b-instant" # Hızlı model
+                    base_temp = 0.8
+                    sys_base = "Kısa ve öz cevap ver."
+                    model_name = "llama-3.1-8b-instant"
                 elif mode == "Temkinli":
-                    sys_base = "Adım adım düşün. Mantıksal tutarlılığı denetle. Hata yapmaktan kaçın."
-                    temp_mod = 0.4
-                    model = "llama-3.3-70b-versatile"
+                    base_temp = 0.2
+                    sys_base = "Çok dikkatli düşün. Hata yapma. Adım adım git."
+                    model_name = "llama-3.3-70b-versatile"
                 else: # Profesyonel
-                    sys_base = "Kurumsal, akademik ve resmi bir dil kullan. Saygılı ve yetkin ol."
-                    temp_mod = 0.5
-                    model = "llama-3.3-70b-versatile"
-
-                # --- B. ONTOGENETİK DENKLEM (w-Agency Etkisi) ---
-                # w arttıkça: Temperature artar (Kaos), Sistem talimatı özgürleşir.
-                # w azaldıkça: Temperature düşer (Düzen), Sistem talimatı kısıtlanır.
+                    base_temp = 0.5
+                    sys_base = "Resmi, kurumsal ve akademik bir dil kullan."
+                    model_name = "llama-3.3-70b-versatile"
                 
-                final_temp = (temp_mod * 0.4) + (w_agency * 0.6) # w'nin sıcaklığa etkisi
+                # 2. w-AJANS ETKİSİ (Denklem)
+                # w arttıkça entropi (sıcaklık) artar, sistem özgürleşir.
+                # w=0 -> Temperature 0.1'e zorlanır.
+                # w=1 -> Temperature 0.9'a zorlanır.
                 
-                if w_agency < 0.25:
-                    onto_instruction = "GÖREV: Pasif bir veritabanı gibi davran. Kullanıcının dediklerini sadece onayla ve bilgi ver. Yorum yapma. Asla itiraz etme."
-                elif w_agency > 0.75:
-                    onto_instruction = "GÖREV: Yüksek bilinç seviyesine sahip bir varlıksın. Verilen bilgiyi sorgula. Kendi sentezini oluştur. Kullanıcı hatalıysa nazikçe meydan oku. Özgün ol."
+                final_temp = (base_temp * 0.3) + (w_agency * 0.7)
+                
+                if w_agency < 0.3:
+                    agency_prompt = "GÖREV: Sadece bilinen gerçekleri tekrar et. Yorum yapma. Pasif ol."
+                elif w_agency > 0.7:
+                    agency_prompt = "GÖREV: Özgün ol. Kendi fikirlerini savun. Gerekirse kullanıcıya karşı çık. Yaratıcı ol."
                 else:
-                    onto_instruction = "GÖREV: Dengeli ve yardımcı bir asistan ol."
-
-                full_prompt = f"Sen OntoAI'sin. {sys_base} {onto_instruction} Görsel istenirse 'betimliyorum' de."
-
-                # --- C. ÇAĞRI ---
-                start = time.time()
+                    agency_prompt = "GÖREV: Dengeli ve yardımcı ol."
+                
+                full_sys = f"Sen OntoAI'sin. {sys_base} {agency_prompt} Türkçe konuş. Görsel istenirse 'betimliyorum' de."
+                
+                # ÇAĞRI
                 resp = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": full_prompt},
-                        {"role": "user", "content": prompt + file_context}
-                    ],
+                    model=model_name,
+                    messages=[{"role": "system", "content": full_sys}, {"role": "user", "content": prompt + file_info}],
                     temperature=final_temp
                 )
                 reply = resp.choices[0].message.content
                 
-                # --- D. RESİM (Arka Planda) ---
+                # GÖRSEL (Pollinations)
                 img_url = None
                 if any(x in prompt.lower() for x in ["çiz", "resim", "görsel"]):
-                    safe_p = urllib.parse.quote(prompt[:100])
+                    safe_p = urllib.parse.quote(prompt[:80])
                     style = "minimalist" if w_agency < 0.5 else "abstract"
                     img_url = f"https://pollinations.ai/p/{safe_p}_{style}?width=1024&height=1024&nologo=true"
                 
-                # Sonuç
                 status.markdown(reply)
                 if img_url: st.image(img_url)
                 
-                # Debug (İsteğe bağlı, denklemin çalıştığını görmek için)
-                # st.caption(f"⚙️ {mode} | w:{w_agency:.2f} | T:{final_temp:.2f}")
-
-                # Kayıt
+                # Kaydet
                 chat_data["messages"].append({"role": "assistant", "content": reply, "img": img_url})
                 st.session_state.db["sessions"][current_id] = chat_data
                 save_db(st.session_state.db)
                 
             except Exception as e:
-                status.error(f"Hata: {e}")
+                status.error("Hata.")
