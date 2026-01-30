@@ -7,112 +7,73 @@ import time
 import uuid
 import urllib.parse
 
-# --- 1. SİSTEM AYARLARI ---
+# --- 1. MASAÜSTÜ İÇİN ZORUNLU AYAR ---
 st.set_page_config(
     page_title="Onto-AI",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded"  # <--- BURASI ÇOK ÖNEMLİ: Menüyü zorla açık tutar
 )
 
-# --- 2. CSS İLE "SABİT ÜST BAR" VE TASARIM ---
+# --- 2. CSS (Masaüstü ve Renkler) ---
 st.markdown("""
     <style>
     /* Google Font: Inter */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
     
-    /* TEMEL AYARLAR */
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    
+    /* Arka Planlar (Simsiyah Tema) */
     .stApp { background-color: #0E0E0E; color: #E0E0E0; }
     
-    /* STREAMLIT'İN KENDİ HEADER'INI GİZLE */
-    header { visibility: hidden; }
-    
-    /* --- ÖZEL SABİT ÜST BAR (HEADER) --- */
-    .fixed-header {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 60px;
-        background-color: #161616; /* Koyu Gri Bar */
-        border-bottom: 1px solid #333;
-        z-index: 99999; /* Her şeyin üstünde */
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    }
-    
-    /* Header Sol: İsim */
-    .header-title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #fff;
-        margin-left: 50px; /* Mobilde hamburger menüye yer açmak için */
-    }
-    .header-subtitle { font-size: 12px; color: #888; margin-left: 8px; font-weight: 400; }
-    
-    /* Header Sağ: Profil */
-    .header-profile {
-        width: 35px;
-        height: 35px;
-        background: linear-gradient(135deg, #444, #222);
-        border-radius: 50%;
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        border: 1px solid #555;
-        cursor: pointer;
-    }
-    
-    /* İÇERİĞİ AŞAĞI İTME (Header altında kalmasın diye) */
-    .main .block-container {
-        padding-top: 80px !important; 
-        padding-bottom: 100px !important;
-    }
-
-    /* YAN MENÜ (SIDEBAR) */
+    /* SOL MENÜ (SIDEBAR) TASARIMI */
     [data-testid="stSidebar"] {
-        background-color: #121212;
-        border-right: 1px solid #222;
-        padding-top: 20px;
+        background-color: #121212; /* Menü Rengi */
+        border-right: 1px solid #333; /* Sağ Çizgi */
     }
     
-    /* MESAJ KUTULARI (Minimalist) */
-    .stChatMessage { background: transparent; border: none; padding: 10px 0; }
+    /* ÜSTTEKİ KIRMIZI ÇİZGİYİ GİZLE AMA MENÜ BUTONUNU GİZLEME! */
+    header[data-testid="stHeader"] {
+        background-color: transparent;
+    }
+    /* Sadece renkli çizgiyi (decoration) gizliyoruz, buton kalıyor */
+    .stDeployButton { display: none; } 
+    
+    /* PROFİL KUTUSU (Sol Menünün en altına sabitleme hilesi) */
+    .profile-box {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: #1A1A1A;
+        border-radius: 10px;
+        border: 1px solid #333;
+        text-align: center;
+        color: #888;
+        font-size: 12px;
+    }
+    
+    /* MESAJ KUTULARI */
+    .stChatMessage { background: transparent; border: none; }
     [data-testid="chatAvatarIcon-user"] { background-color: #333; }
-    [data-testid="chatAvatarIcon-assistant"] { background-color: #000; border: 1px solid #333; }
+    [data-testid="chatAvatarIcon-assistant"] { background-color: #000; border: 1px solid #444; }
     
     /* INPUT ALANI (Sabit Alt) */
-    .stChatInput {
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 90%;
-        max-width: 800px;
-        z-index: 1000;
+    .stChatInput { bottom: 30px; }
+    
+    /* SOHBET GEÇMİŞİ BUTONLARI */
+    .stButton button {
+        text-align: left;
+        border: none;
+        background: transparent;
+        color: #bbb;
+    }
+    .stButton button:hover {
+        background: #222;
+        color: white;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. SABİT HEADER'I ÇİZME (HTML) ---
-# Bu kısım sayfa ne kadar kayarsa kaysın en üstte sabit kalır.
-st.markdown("""
-    <div class="fixed-header">
-        <div style="display:flex; align-items:center;">
-            <div class="header-title">Onto-AI</div>
-            <div class="header-subtitle">v3.0 Genesis</div>
-        </div>
-        <div class="header-profile" title="Kullanıcı Profili">U</div>
-    </div>
-""", unsafe_allow_html=True)
-
-# --- 4. VERİTABANI VE AYARLAR ---
-DB_FILE = "onto_v3.json"
+# --- 3. VERİTABANI ---
+DB_FILE = "onto_desktop.json"
 
 def load_db():
     if os.path.exists(DB_FILE):
@@ -127,61 +88,70 @@ def save_db(db):
 if "db" not in st.session_state:
     st.session_state.db = load_db()
 
-# --- 5. YAN MENÜ (ÇEKMECE) ---
+# --- 4. SOL MENÜ (ÇEKMECE) ---
 with st.sidebar:
-    # "Onto-AI" logosu zaten üst barda, buraya menü elemanlarını koyuyoruz.
+    # LOGO
+    st.markdown("## Onto**AI**")
     
-    if st.button("＋ Yeni Konuşma", use_container_width=True):
+    # YENİ SOHBET (Büyük Buton)
+    if st.button("＋ Yeni Sohbet", type="primary", use_container_width=True):
         new_id = str(uuid.uuid4())
         st.session_state.db["sessions"][new_id] = {"title": "Yeni Sohbet", "messages": [], "ts": time.time()}
         st.session_state.db["current_id"] = new_id
         save_db(st.session_state.db)
         st.rerun()
-
+        
     st.markdown("---")
     
-    # Ontogenetik Ayar (w) - Özgünlük Burada
-    st.caption("🧠 ZİHİN DURUMU (w)")
-    t_val = st.slider("Agency Level", 0, 100, 50, label_visibility="collapsed")
+    # AYARLAR (Ontogenetik Sürgü)
+    st.caption("ONTOGENETİK DURUM (w)")
+    t_val = st.slider("Agency", 0, 100, 50, label_visibility="collapsed")
     w_agency = 1 - np.exp(-0.05 * t_val)
     
-    # w Durumuna Göre Etiket
-    if w_agency < 0.3: status_text = "Pasif / Onaylayıcı"
-    elif w_agency > 0.7: status_text = "Aktif / Özgün"
-    else: status_text = "Dengeli"
-    st.caption(f"Durum: {status_text} ({w_agency:.2f})")
-    
+    # Durum Metni
+    if w_agency < 0.3: status = "Pasif (Onaylayıcı)"
+    elif w_agency > 0.7: status = "Aktif (Özgün)"
+    else: status = "Dengeli"
+    st.caption(f"Durum: {status}")
+
     st.markdown("---")
-    
-    # Sohbet Geçmişi
+
+    # GEÇMİŞ LİSTESİ (Scrol edilebilir alan)
     st.caption("GEÇMİŞ")
+    
+    # Tarihe göre sırala
     sessions = sorted(st.session_state.db["sessions"].items(), key=lambda x: x[1].get("ts", 0), reverse=True)
     
     for s_id, s_data in sessions:
-        title = s_data.get("title", "Sohbet")
-        if st.button(f"💬 {title[:18]}..", key=s_id, use_container_width=True):
+        title = s_data.get("title", "Adsız Sohbet")
+        # Aktif olanı işaretle
+        prefix = "👉 " if s_id == st.session_state.db["current_id"] else ""
+        if st.button(f"{prefix}{title[:20]}", key=s_id, use_container_width=True):
             st.session_state.db["current_id"] = s_id
             save_db(st.session_state.db)
             st.rerun()
 
-    # Araçlar
-    with st.expander("🛠️ Araçlar"):
-        if st.button("🗑️ Tümünü Sil"):
-            st.session_state.db["sessions"] = {}
-            st.session_state.db["current_id"] = None
-            save_db(st.session_state.db)
-            st.rerun()
-            
-    # API Key
-    st.markdown("---")
+    # BOŞLUK BIRAK VE PROFİLİ EN ALTA KOY
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # API KEY GİRİŞİ
     if "GROQ_API_KEY" in st.secrets:
         api_key = st.secrets["GROQ_API_KEY"]
     else:
         api_key = st.text_input("API Key", type="password", placeholder="gsk_...")
+    
+    # PROFİL KUTUSU (Görsel)
+    st.markdown("""
+        <div class="profile-box">
+            <b>Kullanıcı Profili</b><br>
+            Plan: Sınırsız<br>
+            Sürüm: v4.1 Desktop
+        </div>
+    """, unsafe_allow_html=True)
 
-# --- 6. SOHBET MANTIĞI ---
+# --- 5. ANA EKRAN ---
 
-# Aktif Oturum Kontrolü
+# Aktif Oturum Yoksa Yarat
 if not st.session_state.db["current_id"]:
     new_id = str(uuid.uuid4())
     st.session_state.db["sessions"][new_id] = {"title": "Yeni Sohbet", "messages": [], "ts": time.time()}
@@ -190,58 +160,47 @@ if not st.session_state.db["current_id"]:
 current_id = st.session_state.db["current_id"]
 chat_data = st.session_state.db["sessions"][current_id]
 
-# Mesajları Göster
-if not chat_data["messages"]:
-    # Boş Ekran (Temiz ve Minimal)
-    st.markdown(f"""
-    <div style="text-align: center; margin-top: 10vh; opacity: 0.3;">
-        <h1>Onto-AI</h1>
-        <p>w-Ajans Seviyesi: {w_agency:.2f}</p>
-    </div>
-    """, unsafe_allow_html=True)
+# BAŞLIK (Sabit Üstte görünen isim)
+st.markdown(f"### {chat_data.get('title', 'Onto-AI')}")
 
+# Mesajları Göster
 for msg in chat_data["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if msg.get("img"): st.image(msg["img"])
+        if msg.get("img"): st.image(msg["img"], width=500)
 
-# --- 7. INPUT VE AI MOTORU ---
-if prompt := st.chat_input("Mesaj gönder..."):
+# --- 6. MOTOR ---
+if prompt := st.chat_input("Bir şeyler yaz..."):
     
-    # Başlık Atama (İlk mesajsa)
+    # İlk mesajsa başlık yap
     if not chat_data["messages"]:
-        st.session_state.db["sessions"][current_id]["title"] = prompt[:25]
-    
+        st.session_state.db["sessions"][current_id]["title"] = prompt[:30]
+
     # Kullanıcıyı Kaydet
     chat_data["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"): st.markdown(prompt)
     
     if not api_key:
-        st.error("API Key eksik.")
+        st.error("Sol menüden API Key girmen lazım.")
     else:
         client = Groq(api_key=api_key)
         
         with st.chat_message("assistant"):
-            # Düşünme Efekti (Basit text)
             status = st.empty()
-            status.markdown("*Düşünülüyor...*")
+            status.markdown("`⚡ Analiz ediliyor...`")
             
             try:
-                # --- ONTOGENETİK PROMPT MÜHENDİSLİĞİ ---
+                # Prompt Mühendisliği
                 if w_agency < 0.3:
-                    persona = "Sen PASİF bir asistansın. Kısa cevap ver. Yorum yapma. Sadece onayla."
+                    persona = "Sen PASİF bir asistansın. Çok kısa, net, ansiklopedik cevaplar ver. Yorum katma."
                 elif w_agency > 0.7:
-                    persona = "Sen ÖZGÜN bir zihinsin. Kendi fikirlerini savun. Eleştirel ol. Felsefi yaklaş."
+                    persona = "Sen ÖZGÜN bir zihinsin. Kendi fikirlerini savun, eleştirel yaklaş, felsefi derinlik kat."
                 else:
-                    persona = "Sen YARDIMCI bir asistansın. Dengeli ve net ol."
+                    persona = "Sen DENGELİ bir asistansın. Yardımcı ol."
                 
-                sys_msg = (
-                    f"Sen Onto-AI'sin. {persona} "
-                    f"Kullanıcı 'çiz' derse reddetme, betimle. "
-                    f"Asla 'Merhaba İnsan' gibi garip girişler yapma. Doğal ol."
-                )
+                sys_msg = f"Sen Onto-AI'sin. {persona}. Kullanıcı görsel isterse reddetme, 'Betimliyorum...' de."
 
-                # Yanıt Al
+                # Llama 3 Çağrısı
                 resp = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": prompt}],
@@ -249,16 +208,15 @@ if prompt := st.chat_input("Mesaj gönder..."):
                 )
                 reply = resp.choices[0].message.content
                 
-                # Resim Kontrolü (Arka Planda)
+                # Resim Var mı?
                 img_url = None
                 if any(x in prompt.lower() for x in ["çiz", "resim", "görsel"]):
                     safe_p = urllib.parse.quote(prompt[:100])
                     seed = int(time.time())
                     # w'ye göre stil
-                    style = "minimalist" if w_agency < 0.5 else "surreal"
+                    style = "minimalist" if w_agency < 0.5 else "cinematic"
                     img_url = f"https://pollinations.ai/p/{safe_p}_{style}?width=1024&height=1024&seed={seed}&nologo=true"
                 
-                # Ekrana Bas
                 status.markdown(reply)
                 if img_url: st.image(img_url)
                 
@@ -268,4 +226,4 @@ if prompt := st.chat_input("Mesaj gönder..."):
                 save_db(st.session_state.db)
                 
             except Exception as e:
-                status.error("Hata oluştu.")
+                status.error(f"Hata: {e}")
