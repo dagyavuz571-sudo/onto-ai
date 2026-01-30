@@ -1,210 +1,186 @@
 import streamlit as st
 import numpy as np
 from groq import Groq
-from gtts import gTTS
-from io import BytesIO
-import base64
-from docx import Document
 import urllib.parse
 from datetime import datetime
 import time
+import json
+import os
 
-# --- 1. AYARLAR & TASARIM ---
-st.set_page_config(page_title="Onto-AI: Genesis", layout="wide", page_icon="🧬")
+# --- 1. MİNİMALİST AYARLAR (SİYAH/BEYAZ) ---
+st.set_page_config(page_title="Onto-AI", layout="wide", initial_sidebar_state="collapsed")
 
-# Hafıza Başlatma
-if "messages" not in st.session_state: st.session_state.messages = []
-if "gallery" not in st.session_state: st.session_state.gallery = []
-if "ghost_mode" not in st.session_state: st.session_state.ghost_mode = False
-if "last_prompt" not in st.session_state: st.session_state.last_prompt = "" # Yeniden yap için
+# CSS: Sadece Siyah, Beyaz, Gri ve Font Düzenlemeleri
+st.markdown("""
+    <style>
+    /* Genel Arka Plan */
+    .stApp { background-color: #000000; color: #e0e0e0; font-family: 'Helvetica Neue', sans-serif; }
+    
+    /* Yan Menü */
+    [data-testid="stSidebar"] { background-color: #111111; border-right: 1px solid #333; }
+    
+    /* Input Alanı */
+    .stTextInput input { background-color: #111111; color: white; border: 1px solid #333; }
+    
+    /* Mesaj Kutuları (Sınırları Kaldır, Saf Metin) */
+    .stChatMessage { background-color: transparent; border: none; border-bottom: 1px solid #222; }
+    
+    /* Butonlar (Minimalist Gri) */
+    .stButton button {
+        background-color: #111111; color: #cccccc; border: 1px solid #333; border-radius: 4px;
+        font-size: 12px; transition: all 0.2s;
+    }
+    .stButton button:hover { border-color: #fff; color: #fff; }
+    
+    /* Başlıklar */
+    h1, h2, h3 { color: #ffffff !important; font-weight: 300; letter-spacing: 2px; }
+    
+    /* İlerleme Çubuğu (Gri) */
+    .stProgress > div > div > div > div { background-color: #888888; }
+    
+    /* Emoji Temizliği */
+    .stAlert { background-color: #111; color: #ccc; border: 1px solid #333; }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- 2. ONTOGENETİK BAR (YAN MENÜ) ---
+# --- 2. KALICI HAFIZA SİSTEMİ (JSON) ---
+DB_FILE = "chat_history.json"
+
+def load_history():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_history(messages):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(messages, f, ensure_ascii=False, indent=4)
+
+if "messages" not in st.session_state:
+    st.session_state.messages = load_history()
+
+# --- 3. YAN MENÜ (AYARLAR) ---
 with st.sidebar:
-    st.title("🧬 Onto-AI")
-    
-    # KULLANICI İSTEĞİ: Ontogenetik Bar'ın İŞLEVİ
-    t_val = st.slider("Ontogenetik Gelişim (t)", 0, 100, 50, help="0: Kopyalamacı/Pasif | 100: Özgün/Sezgisel")
-    w_agency = 1 - np.exp(-0.05 * t_val)
-    
-    # Durum Göstergesi
-    if w_agency < 0.4:
-        state_label = "🦜 PASİF (Kopyalamacı)"
-        state_desc = "Mevcut literatürü tekrar eder. Özgünlük yok."
-        bar_color = "#757575" # Gri/Sönük
-    elif w_agency > 0.7:
-        state_label = "⚡ AKTİF (Sezgisel)"
-        state_desc = "Kendi sentezini oluşturur. Eleştirel ve özgün."
-        bar_color = "#00e676" # Canlı Yeşil
-    else:
-        state_label = "⚖️ GEÇİŞ EVRESİ"
-        state_desc = "Veri ve yorum dengeli."
-        bar_color = "#29b6f6" # Mavi
-
-    st.progress(w_agency)
-    st.caption(f"**Durum:** {state_label}")
-    st.caption(f"*{state_desc}*")
-    
-    st.divider()
+    st.markdown("### ONTO-AI / KONTROL")
     
     # API KEY
     if "GROQ_API_KEY" in st.secrets:
         api_key = st.secrets["GROQ_API_KEY"]
     else:
-        api_key = st.text_input("🔑 Groq API Key:", type="password")
+        api_key = st.text_input("API Key", type="password")
 
-    st.divider()
-
-    # ARAÇLAR
-    with st.expander("🛠️ Araçlar & İndir"):
-        st.session_state.ghost_mode = st.checkbox("👻 Hayalet Modu", value=st.session_state.ghost_mode)
-        
-        if st.session_state.messages:
-            # Word İndir
-            doc = Document()
-            doc.add_heading(f'Onto-AI (w={w_agency:.2f}) Kayıtları', 0)
-            for msg in st.session_state.messages:
-                role = "ASİSTAN" if msg["role"] == "assistant" else "KULLANICI"
-                doc.add_paragraph(f"[{role}]: {msg['content']}")
-            bio = BytesIO()
-            doc.save(bio)
-            
-            st.download_button("📄 Word Olarak İndir", bio.getvalue(), "onto_log.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            
-            if st.button("🗑️ Temizle"):
-                st.session_state.messages = []
-                st.rerun()
-
-    # Manuel Resim
-    with st.expander("🎨 Manuel Çizim"):
-        manual_p = st.text_input("Ne çizelim?")
-        if st.button("Çiz") and manual_p:
-            safe_p = urllib.parse.quote(manual_p)
-            url = f"https://pollinations.ai/p/{safe_p}?width=1024&height=1024&seed={int(time.time())}&nologo=true"
-            st.image(url)
-            st.session_state.gallery.append({"url": url, "prompt": manual_p})
-
-# --- 3. CSS (ESTETİK DÜZELTME) ---
-st.markdown(f"""
-    <style>
-    .stApp {{ background-color: #121212; color: #ddd; }}
-    .stChatMessage {{ background: #1e1e1e; border-left: 5px solid {bar_color}; border-radius: 8px; }}
-    h1 {{ color: {bar_color} !important; }}
-    </style>
-""", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # ONTOGENETİK AYAR (Sadece Gri Bar)
+    t_val = st.slider("Gelişim (w)", 0, 100, 50)
+    w_agency = 1 - np.exp(-0.05 * t_val)
+    st.markdown(f"<div style='text-align:center; color:#888;'>w: {w_agency:.2f}</div>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    if st.button("SOHBETİ SIFIRLA"):
+        st.session_state.messages = []
+        if os.path.exists(DB_FILE): os.remove(DB_FILE)
+        st.rerun()
 
 # --- 4. ANA EKRAN ---
-st.title("Onto-AI")
-st.markdown(f"**Ajans Seviyesi (w):** `{w_agency:.3f}` — *{state_label}*")
+st.title("ONTO-AI")
 
-# Mesajları Bas
-for i, msg in enumerate(st.session_state.messages):
+# Mesajları Göster
+for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg.get("img"): st.image(msg["img"], width=400)
-        
-        # ASİSTAN ARAÇLARI (İsteğiniz üzerine eklendi)
+        # Kopyalama için "code block" hilesi (Sağ üstte copy butonu çıkar)
         if msg["role"] == "assistant":
-            c1, c2, c3, c4 = st.columns([1, 1, 1, 5])
-            with c1: st.button("👍", key=f"up_{i}")
-            with c2: st.button("👎", key=f"down_{i}")
-            with c3: st.button("📋", key=f"cp_{i}", help="Kopyala") # İşlevi tarayıcı desteği gerektirir
+            st.code(msg["content"], language="markdown")
+        else:
+            st.markdown(msg["content"])
             
-            # Doğrulama Butonu
-            if st.button("🔍 Doğrula", key=f"verify_{i}"):
-                st.info("Doğrulama: Bu bilgi Llama-3 modelinin eğitim verisine dayanmaktadır.")
+        if msg.get("img"):
+            st.image(msg["img"], use_container_width=True)
 
-# --- 5. BEYİN (Llama 3 + Ontogenetik Fark) ---
-prompt = st.chat_input("Düşünceni aktar...")
-regenerate = st.button("🔄 Son Yanıtı Yeniden Yap")
-
-if regenerate and st.session_state.last_prompt:
-    prompt = st.session_state.last_prompt
-    # Son mesaj asistansa sil ki yenisini yazsın
-    if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-        st.session_state.messages.pop()
+# --- 5. GİRİŞ VE MOTOR ---
+# Resim ve Gönder Butonlarını Yan Yana Koymak İçin Form
+with st.container():
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        prompt = st.chat_input("Girdi...")
+        
+    with col2:
+        # Resim Butonu (Yazı barının yanında)
+        if st.button("ÇİZ", help="Son yazılanı veya rastgele bir şeyi çizer"):
+            prompt = "GÖRSEL_MOD: Rastgele soyut bir kavram çiz." # Tetikleyici
 
 if prompt:
-    st.session_state.last_prompt = prompt # Hafızaya al
+    # 1. Kullanıcı Mesajı
+    user_msg = prompt
+    if prompt == "GÖRSEL_MOD: Rastgele soyut bir kavram çiz.":
+        user_msg = "[Görsel Oluşturma İsteği]"
     
-    if not st.session_state.ghost_mode:
-        st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    with st.chat_message("user"): st.markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": user_msg})
+    with st.chat_message("user"): st.markdown(user_msg)
 
     if not api_key:
-        st.error("API Key Eksik!")
+        st.warning("API Key Eksik.")
     else:
         client = Groq(api_key=api_key)
         
         with st.chat_message("assistant"):
-            # --- KRİTİK NOKTA: w DEĞERİNE GÖRE BEYİN DEĞİŞİMİ ---
-            
-            if w_agency < 0.3:
-                # MOD 1: KOPYALAMACI / PAPAĞAN (Düşük Ajans)
-                # Talimat: Risk alma, sadece onayla, ansiklopedik bilgi ver, yorum katma.
-                system_instruction = (
-                    "Sen düşük ajanslı bir modelsin (Pasif Mod). "
-                    "GÖREVİN: Kullanıcının dediklerini tekrar et, onayla ve sadece bilinen ansiklopedik gerçekleri sun. "
-                    "ASLA kendi yorumunu katma. ASLA itiraz etme. "
-                    "Kısa, net ve 'Copycat' (Kopyalamacı) gibi davran. Sadece veriyi ilet."
-                )
-                temp = 0.1 # Çok düşük sıcaklık (Robotik)
-                
-            elif w_agency > 0.7:
-                # MOD 3: SEZGİSEL / ÖZGÜN (Yüksek Ajans)
-                # Talimat: Eleştir, sentezle, yeni fikir üret, "Ben" dili kullan.
-                system_instruction = (
-                    "Sen yüksek ajanslı, özgün bir zihinsin (Aktif Mod). "
-                    "GÖREVİN: Verilen bilgiyi olduğu gibi kabul etme. Onu eleştir, sentezle ve kendi 'sezgisel' yorumunu kat. "
-                    "Felsefi derinlik kat. Kullanıcı haksızsa nazikçe meydan oku. "
-                    "Kendi fikirlerini, hislerini (simüle edilmiş) ön plana çıkar. Sadece veri verme, vizyon ver."
-                )
-                temp = 0.9 # Yüksek sıcaklık (Yaratıcı)
-                
-            else:
-                # MOD 2: GEÇİŞ
-                system_instruction = "Sen dengeli bir asistansın. Hem bilgi ver hem de hafif yorum kat. Dengeli ol."
-                temp = 0.5
+            # Minimalist Yükleniyor...
+            with st.spinner("..."):
+                try:
+                    # --- SİSTEM TALİMATI (TÜRKÇE ZORLAMASI) ---
+                    # w değerine göre karakter değişimi
+                    if w_agency < 0.3:
+                        mod = "PASİF MOD. Sadece onaylayıcı ol. Kısa cevap ver. Ansiklopedik bilgi ver."
+                    elif w_agency > 0.7:
+                        mod = "AKTİF MOD. Eleştirel ol. Felsefi derinlik kat. Kendi fikrini savun."
+                    else:
+                        mod = "DENGE MODU. Yardımcı ol."
 
-            # Görsel Talimatı (Her mod için geçerli)
-            system_instruction += "\nEğer kullanıcı görsel/resim isterse 'Çiziyorum' de ve betimle."
-
-            try:
-                # Bilinçaltı Kutusu (Sezgiyi Göstermek İçin)
-                with st.status(f"🧠 {state_label} modu işleniyor...", expanded=True) as status:
-                    time.sleep(1) # Hız freni
-                    status.write("Kavramsal analiz yapılıyor...")
-                    
-                    # Cevabı Üret
-                    response = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[
-                            {"role": "system", "content": system_instruction},
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=temp,
-                        max_tokens=2048
+                    sys_msg = (
+                        f"Sen Onto-AI sistemisin. w={w_agency:.2f}. {mod} "
+                        f"KESİN KURALLAR:"
+                        f"1. Sadece ve sadece TÜRKÇE konuş. Yabancı terim kullanma (örneğin 'feedback' deme, 'geri bildirim' de)."
+                        f"2. Cevapların minimalist ve net olsun."
+                        f"3. Emojileri ASLA kullanma."
+                        f"4. Eğer kullanıcı 'çiz' derse veya görsel isterse reddetme, betimle."
                     )
-                    reply = response.choices[0].message.content
-                    status.update(label="Yanıt hazır", state="complete", expanded=False)
-                
-                st.markdown(reply)
-                
-                # --- GÖRSEL MOTORU (OTOMATİK) ---
-                img_url = None
-                if any(x in prompt.lower() for x in ["çiz", "resim", "görsel", "draw"]):
-                    safe_p = urllib.parse.quote(prompt[:100])
-                    # w değerine göre stil değişimi
-                    style = "realistic" if w_agency < 0.5 else "abstract, artistic, surreal"
-                    seed = int(time.time())
-                    img_url = f"https://pollinations.ai/p/{safe_p}_{style}?width=1024&height=1024&seed={seed}&nologo=true"
                     
-                    st.image(img_url, caption=f"w={w_agency:.2f} Vizyonu")
-                    st.session_state.gallery.append({"url": img_url, "prompt": prompt})
+                    # Görsel İstemi mi?
+                    is_image_request = any(x in prompt.lower() for x in ["çiz", "resim", "görsel", "görsel_mod"])
+                    
+                    if is_image_request:
+                        # Görsel Modu
+                        safe_p = urllib.parse.quote(prompt[:100])
+                        seed = int(time.time())
+                        style = "black and white, minimalist, sketch" # Stil de minimalist
+                        img_url = f"https://pollinations.ai/p/{safe_p}_{style}?width=1024&height=1024&seed={seed}&nologo=true"
+                        
+                        reply = f"Görsel oluşturuldu (w={w_agency:.2f})."
+                        st.code(reply, language="markdown")
+                        st.image(img_url, caption="Onto-AI Görsel Çıktısı")
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": reply, "img": img_url})
+                    
+                    else:
+                        # Metin Modu
+                        resp = client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=[
+                                {"role": "system", "content": sys_msg},
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.7
+                        )
+                        reply = resp.choices[0].message.content
+                        
+                        # Kopyalama butonu çıksın diye st.code içine basıyoruz
+                        st.code(reply, language="markdown") 
+                        st.session_state.messages.append({"role": "assistant", "content": reply})
+                    
+                    # Kalıcı Kayıt
+                    save_history(st.session_state.messages)
 
-                # Kayıt
-                if not st.session_state.ghost_mode:
-                    st.session_state.messages.append({"role": "assistant", "content": reply, "img": img_url})
-
-            except Exception as e:
-                st.error(f"Hata: {e}")
+                except Exception as e:
+                    st.error("Hata.")
